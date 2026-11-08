@@ -16,7 +16,7 @@ import inspect
 import json
 from pathlib import Path
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, DeferredToolRequests, DeferredToolResults, ToolDenied
 from pydantic_ai.exceptions import ModelHTTPError
 from fastmcp import Client
 from pydantic_ai.mcp import MCPToolset, StdioTransport
@@ -35,12 +35,14 @@ INSTRUCTIONS = """\
 - 用語集に見つからないことは、推測で断定せず「用語集にはない」と伝える。
 - 回答の最後に、関係する回（第N回）を示す。
 - 宿題の答えそのものは書かず、考え方のヒントで導く。
+- 学習の記録の保存を頼まれたら、必ず save_learning_log ツールを呼び出す。テキストだけで保存したと言わない。保存の前に確認が入る。
 """
 
 # モデルは実行時に渡す（テストではAPIを呼ばない TestModel に差し替えるため）
-agent = Agent(instructions=INSTRUCTIONS)
+agent = Agent(instructions=INSTRUCTIONS, output_type=[str, DeferredToolRequests])
 agent.tool_plain(tools.search_glossary)
 agent.tool_plain(tools.get_lecture_summary)
+agent.tool_plain(tools.save_learning_log, requires_approval=True)
 
 # TODO(第3回 演習): tools.py に make_quiz を作り、ここで登録しよう
 
@@ -132,7 +134,28 @@ def main() -> None:
     except ModelHTTPError as e:
         print(api_error_message(e.status_code, str(e.body)[:200]))
         raise SystemExit(1)
-    print(result.output)
+        # 第3回 宿題 承認待ちの処理
+    if isinstance(result.output, DeferredToolRequests):
+        requests = result.output
+        print("承認待ち")
+        for call in requests.approvals:
+            print(f"ツール: {call.tool_name}  引数: {call.args}")
+        results = DeferredToolResults()
+        for call in requests.approvals:
+            ans = input(f"{call.tool_name} を実行してよいですか？ [y/n]: ").strip().lower()
+            if ans == "y":
+                results.approvals[call.tool_call_id] = True
+            else:
+                results.approvals[call.tool_call_id] = ToolDenied("ユーザーが保存を断りました")
+        if args.trace:
+            print_trace(result)
+        result = target.run_sync(
+            "承認結果をふまえて続きを実行して",
+            model=build_model(),
+            message_history=result.all_messages(),
+            deferred_tool_results=results,
+        )
+        print(result.output)
     if args.trace:
         print_trace(result)
 

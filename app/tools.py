@@ -5,6 +5,8 @@
 """
 
 import json
+import re
+from datetime import datetime
 from functools import cache
 from pathlib import Path
 
@@ -77,3 +79,24 @@ def get_lecture_summary(lecture: int) -> str:
         available = sorted(p.stem for p in (DATA_DIR / "lectures").glob("*.md"))
         return f"第{lecture}回の要点はまだありません。用意されている回: {', '.join(available)}"
     return path.read_text(encoding="utf-8")
+
+def save_learning_log(content: str, topic: str = "general") -> str:
+    """学習の記録を learning_log/ フォルダに保存する。
+
+    「今日学んだことを保存して」「学習の記録を残して」のように、
+    学習内容の保存を頼まれたときに使う。質問に答えるだけのときは使わない。
+    content には保存したい学習内容の要点を入れる。
+    topic には内容の題名を短く入れる（例: "agent-loop"）。
+    """
+    safe_topic = re.sub(r"[^0-9A-Za-z_-]+", "-", topic).strip("-") or "general"
+    safe_topic = safe_topic[:40]
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    log_dir = Path(__file__).resolve().parent.parent / "learning_log"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    path = log_dir / f"{timestamp}-{safe_topic}.md"
+    n = 1
+    while path.exists():
+        path = log_dir / f"{timestamp}-{safe_topic}-{n}.md"
+        n += 1
+    path.write_text(f"# {topic}\n\n{content}\n", encoding="utf-8")
+    return f"learning_log/ に保存しました: {path.name}"

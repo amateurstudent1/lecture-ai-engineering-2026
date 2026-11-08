@@ -7,6 +7,7 @@ TestModel は実際のLLMを呼ばない偽モデルで、登録されたツー�
 
 from pydantic_ai import DeferredToolRequests
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+from pydantic_ai import DeferredToolRequests
 from pydantic_ai.models.test import TestModel
 
 from app.agent import agent
